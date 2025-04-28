@@ -8,15 +8,26 @@ const BooksApp = () => {
   const [savedBooks, setSavedBooks] = useState([]);
   const [expandedDescription, setExpandedDescription] = useState(null);
   const [feedbackMessages, setFeedbackMessages] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const booksPerPage = 5;
   const fileInputRef = useRef(null);
 
   const handleSearch = async (e) => {
     e.preventDefault();
-    const response = await fetch(
-      `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}`
-    );
-    const data = await response.json();
-    setBooks(data.items || []);
+    try {
+      const response = await fetch(
+        `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}`
+      );
+      if (!response.ok) {
+        throw new Error('Failed to fetch books');
+      }
+      const data = await response.json();
+      setBooks(data.items || []);
+      setCurrentPage(1); // reset to page 1 after new search
+    } catch (error) {
+      console.error('Error fetching books:', error);
+    }
   };
 
   const handleImageUpload = (e) => {
@@ -36,7 +47,6 @@ const BooksApp = () => {
     const isBookSaved = savedBooks.some((savedBook) => savedBook.id === book.id);
 
     if (isBookSaved) {
-      // Show feedback message that the book is already added
       setFeedbackMessages((prev) => ({
         ...prev,
         [book.id]: 'Already added to your library!',
@@ -47,11 +57,10 @@ const BooksApp = () => {
           delete newFeedback[book.id];
           return newFeedback;
         });
-      }, 3000); // Clear the message after 3 seconds
+      }, 3000);
       return;
     }
 
-    // Save the book to the library
     setSavedBooks((prevBooks) => [
       ...prevBooks,
       {
@@ -63,13 +72,11 @@ const BooksApp = () => {
       },
     ]);
 
-    // Show feedback message when a book is saved
     setFeedbackMessages((prev) => ({
       ...prev,
       [book.id]: `${book.volumeInfo.title} has been added to your library!`,
     }));
 
-    // Clear the feedback message after 3 seconds
     setTimeout(() => {
       setFeedbackMessages((prev) => {
         const newFeedback = { ...prev };
@@ -85,6 +92,23 @@ const BooksApp = () => {
 
   const toggleDescription = (bookId) => {
     setExpandedDescription(expandedDescription === bookId ? null : bookId);
+  };
+
+  // Pagination Logic
+  const indexOfLastBook = currentPage * booksPerPage;
+  const indexOfFirstBook = indexOfLastBook - booksPerPage;
+  const currentBooks = books.slice(indexOfFirstBook, indexOfLastBook);
+
+  const paginateNext = () => {
+    if (indexOfLastBook < books.length) {
+      setCurrentPage((prevPage) => prevPage + 1);
+    }
+  };
+
+  const paginatePrev = () => {
+    if (currentPage > 1) {
+      setCurrentPage((prevPage) => prevPage - 1);
+    }
   };
 
   return (
@@ -121,7 +145,7 @@ const BooksApp = () => {
       </form>
 
       <div className="books-list">
-        {books.map((book) => {
+        {currentBooks.map((book) => {
           const { title, authors, description, imageLinks } = book.volumeInfo;
           const isExpanded = expandedDescription === book.id;
 
@@ -140,19 +164,23 @@ const BooksApp = () => {
                 {description && (
                   <p className="description">
                     {isExpanded ? description : `${description.substring(0, 200)}...`}
-                    <button className="view-more" onClick={() => toggleDescription(book.id)}>
+                    <button
+                      type="button"
+                      className="view-more"
+                      onClick={() => toggleDescription(book.id)}
+                    >
                       {isExpanded ? 'View Less' : 'View More'}
                     </button>
                   </p>
                 )}
                 <button
+                  type="button"
                   className="save-button"
-                  onClick={(e) => handleSaveBook(book, e)} // Pass the event to handleSaveBook
+                  onClick={(e) => handleSaveBook(book, e)}
                 >
                   Save
                 </button>
 
-                {/* Display feedback message near the save button */}
                 {feedbackMessages[book.id] && (
                   <div className="feedback-message">
                     <p>{feedbackMessages[book.id]}</p>
@@ -164,20 +192,45 @@ const BooksApp = () => {
         })}
       </div>
 
+      {/* Pagination buttons */}
+      {books.length > 0 && (
+        <div className="pagination">
+          <button
+            onClick={paginatePrev}
+            disabled={currentPage === 1}
+            className="pagination-button"
+          >
+            Prev
+          </button>
+
+          <span className="page-number">Page {currentPage}</span>
+
+          <button
+            onClick={paginateNext}
+            disabled={indexOfLastBook >= books.length}
+            className="pagination-button"
+          >
+            Next
+          </button>
+        </div>
+      )}
+
       <h3>Your Library</h3>
       <div className="library">
         {savedBooks.length > 0 ? (
           <ul>
             {savedBooks.map((book, index) => (
               <li key={index} className="saved-book-card">
-                {book.image && <img src={book.image} alt={`${book.title} cover`} className="book-thumbnail" />}
+                {book.image && (
+                  <img src={book.image} alt={`${book.title} cover`} className="book-thumbnail" />
+                )}
                 <div className="saved-book-info">
                   <h4>{book.title}</h4>
                   <p>{book.authors?.join(', ')}</p>
                   <p className="description">{book.description?.substring(0, 200)}...</p>
                 </div>
-                {/* Delete button in the library */}
                 <button
+                  type="button"
                   className="delete-button"
                   onClick={() => handleDeleteBook(book.id)}
                 >
